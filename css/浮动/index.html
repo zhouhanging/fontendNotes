@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <style>
+    body{
+      margin: 0;
+      overflow: hidden;
+    }
+    .box{
+      width: 200px;
+      height: 200px;
+      margin: 0 auto;
+      background-color: burlywood;
+    }
+    .item1, .item2{
+      background-color: antiquewhite;
+    }
+    /**
+    float :向左浮动或者向右浮动
+    left 左浮动
+    right 右浮动
+     */
+    .item1{
+      float: left;
+    }
+    .item2{
+      float: right;
+    }
+  </style>
+</head>
+<body>
+ <div class="box">
+<!--  浮动元素不会超出包含块，一般指父元素 -->
+   <div class="item1">1</div>
+   <div class="item2">2</div>
+ </div>
+</body>
+</html>
