@@ -1,0 +1,86 @@
+<template>
+  <h-upload
+      ref="importFile"
+      :action="uploadUrl"
+      :format="formatList"
+      :max-size="maxSize"
+      :selectNoPercent="true"
+      :with-credentials="true"
+      :before-upload="handleUpload"
+      :on-success="handleSuccess"
+      :data="addFileItem"
+      :showErrorlist="false"
+      :on-exceeded-size="handleMaxSize"
+      :on-error="handleError"
+      :on-format-error="onFormatError"
+      :on-remove="handleRemove"
+  >
+    <!-- <h-button type="ghost" icon="upload" :disabled="fileList.length === 1">选择要上传文件的文件</h-button> -->
+    <h-button type="ghost" icon="upload">选择要上传文件的文件</h-button>
+  </h-upload>
+</template>
+
+<script>
+import fetch from "@/api/httpFetch";
+export default {
+  name: "importFile",
+  components: {},
+  props: {
+    uploadUrl: String,
+    formatList: Array,
+    addFileItem: Object,
+    maxSize: Number,
+  },
+  data() {
+    return {
+      file: {},
+      fileList: [],
+      filePath: '',
+      posting: false
+    }
+  },
+  methods: {
+    handleUpload(file) {
+      // console.log(file)
+    },
+    async handleSuccess(res, file) {
+      this.$hMessage.info("文件上传成功");
+      // console.log(res)
+      // console.log(file)
+      if (res.code == "0000") {
+        this.fileList = []
+        this.$hMessage.info("文件上传成功");
+        console.log(file)
+        this.file = res.sysFileAttachBO || {}
+        if (Object.keys(file).length) {
+          this.fileList = [file]
+          console.log(this.fileList)
+          console.log("llllll")
+        }
+      } else {  
+        this.$hMessage.error("文件上传失败");
+      }
+    },
+    handleError(error, response, file) {
+      this.$hMessage.error(response.message);
+    },
+    handleMaxSize(file) {
+      this.$hMessage.error("文件大小不能超过 10M");
+    },
+    onFormatError(err, resp, file) {
+      this.$hMessage.error("文件格式有误");
+    },
+    handleRemove(file) {
+      console.log(file)
+      this.fileList = []
+    }
+  },
+  created() {
+
+  }
+}
+</script>
+
+<style scoped>
+
+</style>
