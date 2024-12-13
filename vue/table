@@ -1,0 +1,949 @@
+<template>
+  <div class="h-datagrid">
+    <div class="h-datagrid-title" v-if="isShowTitle" ref="gridTitle">
+      <h4>
+        <span>{{ title }}</span
+        ><slot name="help-icon"></slot>
+      </h4>
+    </div>
+    <div class="h-datagrid-toolbar" v-if="isShowToolBar" ref="gridToolbar">
+      <div
+        class="pull-right"
+        ref="listCheckBox"
+        v-if="showListCkeckBox"
+        :class="{ expandListBox: showMultiple }"
+      >
+        <h-button
+          type="ghost"
+          icon="t-b-setting"
+          class="h-btn-check"
+          @click="handlemultiple"
+        >
+          <h-icon name="unfold" size="14" style="margin-left: 0"></h-icon>
+        </h-button>
+        <h-button
+          type="ghost"
+          icon="t-b-setting"
+          class="h-btn-check"
+          @click="handleListCheckBoxWin"
+        >
+        </h-button>
+        <transition name="slide-up">
+          <div
+            v-show="showMultiple"
+            class="h-table-checkBox-container"
+            style="width: 120px"
+          >
+            <h-checkbox-group
+              class="h-table-checkBox-group"
+              v-model="checked"
+              v-for="(item, index) in showCol"
+              :key="item.key"
+              @on-change="checkAllGroupChange(item, false)"
+            >
+              <h-checkbox
+                :label="item.key"
+                :disabled="index == 1 || index == 2"
+                class="h-table-checkBox"
+              >
+                <span class="h-table-checkBox-item">{{ item.title }}</span>
+              </h-checkbox>
+            </h-checkbox-group>
+          </div>
+        </transition>
+      </div>
+      <slot name="toolbar"></slot>
+      <!-- <h-button type="ghost" icon="addition" @click="exportCsv()">{{$t('m.i.common.download')}}</h-button> -->
+    </div>
+    <!-- 树表格，适用于需要分页 -->
+    <div v-if="tableType == 'table'">
+      <div :ref="selfAdaptTable" class="h-table-box">
+        <h-table
+          :data="tData"
+          :columns="columnsArray"
+          :size="size"
+          :border="border"
+          :stripe="stripe"
+          :show-header="showHeader"
+          :width="width"
+          :height="fixedHeight"
+          :canDrag="canDrag"
+          :loading="loadingData"
+          :disabled-hover="disabledHover"
+          :highlight-row="highlightRow"
+          :rowSelect="rowSelect"
+          :row-class-name="rowClassName"
+          :no-data-text="noDataText"
+          :no-filtered-data-text="noFilteredDataText"
+          :patibleHeight="patibleHeight"
+          :showTitle="tableShowTitle"
+          :dataCheckedProp="dataCheckedProp"
+          :isComplementColWidth="isComplementColWidth"
+          :defaultPageSize="isDefaultPageSize"
+          @on-row-click="onRowClick"
+          @on-row-dblclick="onRowDbClick"
+          @on-current-change="onCurrentChange"
+          @on-select="onSelect"
+          @on-select-cancel="onSelectCancel"
+          @on-select-all="onSelectAll"
+          @on-selection-change="onSelectChange"
+          @on-sort-change="onSortChange"
+          @on-expand="onExpand"
+          @on-scroll="onScroll"
+          ref="gridContent"
+          fixedAutoHeight
+        >
+        </h-table>
+      </div>
+      <div class="h-table-pageView">
+        <h-page
+          :current="pageInfo.pageNo"
+          :total="total"
+          :page-size="pageInfo.pageSize"
+          :size="size"
+          :placement="placement"
+          :simple="simple"
+          :show-total="showTotal"
+          :show-elevator="showElevator"
+          :show-sizer="showSizer"
+          :pageSizeOpts="pageSizeOpts"
+          :class-name="className"
+          :styles="styles"
+          @on-change="dataChange"
+          @on-page-size-change="pageSizeChange"
+          ref="gridPage"
+          v-if="isShowPage"
+        >
+        </h-page>
+      </div>
+    </div>
+    <!-- 简单树表格，适用于不需要分页，大量数据 -->
+    <div v-else>
+      <div :ref="selfAdaptTable" class="h-table-box">
+        <h-simple-table
+          :data="tData"
+          :columns="columnsArray"
+          :size="size"
+          :itemHeight="itemHeight"
+          :border="border"
+          :stripe="stripe"
+          :show-header="showHeader"
+          :width="width"
+          :height="fixedHeight"
+          :canDrag="canDrag"
+          :loading="loadingData"
+          :disabled-hover="disabledHover"
+          :highlight-row="highlightRow"
+          :rowSelect="rowSelect"
+          :row-class-name="rowClassName"
+          :no-data-text="noDataText"
+          :dataCheckedProp="dataCheckedProp"
+          @on-row-click="onRowClick"
+          @on-row-dblclick="onRowDbClick"
+          @on-current-change="onCurrentChange"
+          @on-select="onSelect"
+          @on-select-cancel="onSelectCancel"
+          @on-select-all="onSelectAll"
+          @on-selection-change="onSelectChange"
+          @on-sort-change="onSortChange"
+          @on-scroll="onScroll"
+          ref="simpleGridContent"
+        >
+        </h-simple-table>
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+// import Emitter from '@/utils/emitter'
+//import printJS from 'print-js/src/index'
+
+export default {
+  name: "HDatagrid",
+  data() {
+    return {
+      patibleHeight: true,
+      selfHeight: 0,
+      fixedHeight: this.height,
+      tData: [],
+      total: 0,
+      dataInfo: {},
+      pageInfo: {
+        pageNo: this.current || 1,
+        pageSize: this.pageSize || 10,
+      },
+      isShowTitle: this.hasTitle,
+      isShowToolBar: this.hasToolBar,
+      isShowPage: this.hasPage,
+      loadingData: false, //仅在url中生效，非URL在外部配置,
+      showMultiple: false,
+      checked: [],
+      showCol: [],
+      keysCol: [],
+      disableCols: [],
+      initHiddenCols: [],
+      urlStr: "",
+      columnsCodes: [], //数据库保存的列拼接字符
+      initColumns: [], //初始化列数据
+      noDataText: this.onDataText,
+      isDefaultPageSize: this.defaultPageSize, //设置页面表格默认显示条数（不包含窗口页面），false不设置则默认10条；为true表示设置，结合window.LOCAL_CONFIG.defaultPageSize  条数可为5、10、15、20、50、100，see上可设置
+      defaultPageSizeNum: 10,
+    };
+  },
+  computed: {
+    //表格展示列columns
+    columnsArray() {
+      if (this.columnsCodes.length > 0) {
+        this.loadingData = true;
+        this.columns.forEach((item) => {
+          let key = item.key ? item.key : item.type;
+          if (this.columnsCodes.indexOf(key) > -1) {
+            item.hiddenCol = false;
+          } else {
+            item.hiddenCol = true;
+          }
+        });
+        this.loadingData = false;
+      }
+
+      this.columns.forEach((item) => {
+        item.hiddenCol =
+          item.hiddenCol === true || item.hiddenCol === false
+            ? item.hiddenCol
+            : false;
+
+        item.ellipsis =
+          item.ellipsis === true || item.ellipsis === false
+            ? item.ellipsis
+            : true;
+
+        if (item.showTitle === true || item.showTitle === false) {
+          item.showTitle = item.showTitle;
+        } else {
+          item.showTitle = item.ellipsis ? true : false;
+        }
+
+        item.sortable =
+          item.sortable === true || item.sortable === false
+            ? item.sortable
+            : true;
+      });
+      return this.columns;
+    },
+  },
+  // mixins: [Emitter],
+  props: {
+    dataCheckedProp: {
+      //data中默认添加_checked属性记录当前选中状态
+      type: Boolean,
+      default: true,
+    },
+    tableType: {
+      type: String,
+      default: "table",
+    },
+    itemHeight: {
+      type: Number,
+      default: 30,
+    },
+    title: String, //表格列表头部信息,
+    showListCkeckBox: {
+      //是否显示自定义表格选项框
+      type: Boolean,
+      default: true,
+    },
+    hasTitle: {
+      //是否有title
+      type: Boolean,
+      default: false,
+    },
+    hasToolBar: {
+      //是否有toolbar
+      type: Boolean,
+      default: true,
+    },
+    hasPage: {
+      //是否显示分页
+      type: Boolean,
+      default: false,
+    },
+    tableShowTitle: {
+      type: Boolean,
+      default: true,
+    },
+    gridData: Object, // 数据信息，包含表格信息rows及分页信息total[可以通过property自定义rows字段]
+    columns: Array,
+    border: {
+      type: Boolean,
+      default: true,
+    },
+    size: {
+      type: String,
+      default: "small",
+    },
+    stripe: {
+      type: Boolean,
+      default: true,
+    },
+    showHeader: {
+      type: Boolean,
+      default: true,
+    },
+    width: [Number, String],
+    height: [Number, String],
+    canDrag: {
+      type: Boolean,
+      default: true,
+    },
+    disabledHover: {
+      type: Boolean,
+      default: false,
+    },
+    highlightRow: {
+      type: Boolean,
+    },
+    rowSelect: {
+      type: Boolean,
+    },
+    isComplementColWidth: {
+      //控制拖拽缩小最后一列列宽时是否用相邻列补齐差值(hui版本1.0.86以上，只是用于table)
+      type: Boolean,
+      default: true,
+    },
+    rowClassName: Function,
+    onDataText: String,
+    noFilteredDataText: String,
+    defaultPageSize: Boolean,
+    onRowClick: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onRowDbClick: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onCurrentChange: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onSelect: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onSelectCancel: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onSelectAll: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onSelectChange: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onSortChange: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onExpand: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    onScroll: {
+      type: Function,
+      default() {
+        return "";
+      },
+    },
+    current: Number,
+    pageSize: Number,
+    placement: {
+      type: String,
+      default: "top",
+    },
+    pageSizeOpts: Array,
+    simple: Boolean,
+    showTotal: {
+      type: Boolean,
+      default: true,
+    },
+    showElevator: {
+      type: Boolean,
+      default: true,
+    },
+    showSizer: {
+      type: Boolean,
+      default: true,
+    },
+    className: String,
+    styles: Object,
+    // hasPage:{ //是否显示分页
+    //   type: Boolean,
+    //   default: false
+    // },
+    getDataFunc: {
+      //分页获取data函数，该参数必须配gridData || 无分页情况,直接返回rows,同时配置get-data事件
+      type: Boolean,
+      default: false,
+    },
+    // getData: Function, //分页获取data函数，该参数必须配gridData || 无分页情况,直接返回rows
+    url: String, //参考2.0 通过url请求数据
+    bindForm: Object,
+    autoLoad: {
+      //设置URL时是否自动加载数据，默认true
+      type: Boolean,
+      default: true,
+    },
+    loading: {
+      // 非url时使用
+      type: Boolean,
+      default: false,
+    },
+    selfAdaptTable: String, //暴露给用户ref属性,设置此属性后，表格根据页面高度自适应，不设置此属性按照给定的高度值给表格设定高度
+    property: {
+      type: Object,
+      default() {
+        // 自定义返回字段
+        return {
+          total: "total",
+          rows: "rows",
+          pageNo: "pageNo",
+          pageSize: "pageSize",
+          responseType: "data",
+        };
+      },
+    },
+  },
+  watch: {
+    selfHeight(val) {
+      this.selfHeight = val;
+    },
+    current(val) {
+      this.pageInfo.pageNo = val;
+    },
+    pageSize(val) {
+      this.pageInfo.pageSize = val;
+    },
+    gridData: {
+      handler(newValue, oldValue) {
+        if (
+          newValue &&
+          newValue[this.property.rows] &&
+          newValue[this.property.rows].length > 0
+        ) {
+          this.tData = newValue[this.property.rows];
+        } else {
+          this.tData = [];
+        }
+        if (this.hasPage) {
+          if (newValue && newValue[this.property.total]) {
+            this.total = newValue[this.property.total];
+          } else {
+            this.total = 0;
+          }
+        }
+      },
+      deep: true,
+    },
+    // bindForm: {
+    //   // 对象深度观察
+    //   handler: (val) => {
+    //     this.pageInfo.pageNo = 1
+    //     this.getDataListByUrl()
+    //   },
+    //   deep: true
+    // }
+    loading(val) {
+      this.loadingData = val;
+    },
+  },
+  methods: {
+    getDataListByUrl() {
+      // 是否有分页存在
+      this.loadingData = true;
+      this.noDataText = "";
+      let isUrlLowercase = window.LOCAL_CONFIG.isUrlLowercase + "";
+      if (isUrlLowercase == "true") {
+        let temp = this.url + "?time=" + new Date().getTime();
+        this.urlStr = temp.toLowerCase();
+      } else {
+        this.urlStr = this.url + "?time=" + new Date().getTime();
+      }
+      if (this.hasPage) {
+        let query = this.pageInfo;
+        Object.assign(query, this.bindForm);
+        let that = this;
+        this.$hCore.fetch.post(this.urlStr, query).then((res) => {
+          if (res) {
+            //token过期判定
+            this.loadingData = false;
+            //数据为空时显示的提示内容,默认显示暂无数据
+            if (this.onDataText && this.onDataText != "") {
+              this.noDataText = this.onDataText;
+            } else {
+              this.noDataText = this.$t("m.i.menu.noData"); //暂无数据
+            }
+            if (
+              res[this.property.responseType][this.property.total] &&
+              res[this.property.responseType][this.property.total] > 0 &&
+              res[this.property.responseType][this.property.rows]
+            ) {
+              this.tData = res[this.property.responseType][this.property.rows];
+              this.total = res[this.property.responseType][this.property.total];
+            } else {
+              this.tData = [];
+              this.total = 0;
+            }
+            that.$nextTick(function () {
+              that.dispatch(
+                "curpage",
+                "successDatagridLoad",
+                this.tData,
+                this.total
+              );
+            });
+          } else {
+            this.loadingData = false;
+            this.tData = [];
+          }
+        });
+      } else {
+        let query = this.bindForm;
+        let that = this;
+        this.$hCore.fetch.post(this.urlStr, query).then((res) => {
+          if (res && res[this.property.responseType]) {
+            this.loadingData = false;
+            if (
+              res[this.property.responseType][this.property.rows] &&
+              res[this.property.responseType][this.property.rows].length > 0
+            ) {
+              this.tData = res[this.property.responseType][this.property.rows];
+            } else if (
+              res[this.property.responseType] &&
+              res[this.property.responseType].length > 0
+            ) {
+              this.tData = res[this.property.responseType];
+            } else if (
+              res[this.property.responseType] &&
+              res[this.property.responseType][this.property.rows] &&
+              res[this.property.responseType][this.property.rows].length > 0
+            ) {
+              this.tData = res[this.property.responseType][this.property.rows];
+            } else {
+              this.tData = [];
+            }
+            that.$nextTick(function () {
+              that.dispatch("curpage", "successDatagridLoad");
+            });
+          } else {
+            this.loadingData = false;
+            this.tData = [];
+          }
+        });
+      }
+    },
+    // 赋值
+    setGridData() {
+      if (this.gridData[this.property.rows]) {
+        this.loadingData = this.loading;
+        this.tData = this.gridData[this.property.rows];
+      }
+      if (this.hasPage) {
+        if (this.gridData[this.property.total]) {
+          this.loadingData = this.loading;
+          this.total = this.gridData[this.property.total];
+        }
+      }
+    },
+    getDataList(pageNo, pageSize, type) {
+      if (this.url) {
+        this.getDataListByUrl();
+        this.$emit("on-page-change-url", pageNo, pageSize); //点击分页时，传递事件
+      } else if (this.getDataFunc) {
+        if (this.hasPage) {
+          this.$emit("on-page-change", pageNo, pageSize, type);
+        } else {
+          this.$emit("get-data");
+        }
+      } else {
+        this.$emit("on-page-change", pageNo, pageSize);
+        // this.setGridData()
+      }
+    },
+    // 点击上一页
+    dataChange(i) {
+      this.pageInfo.pageNo = i;
+      this.getDataList(i, this.pageInfo.pageSize, "pageChg");
+    },
+    // 页码改变
+    pageSizeChange(i) {
+      this.pageInfo.pageSize = i;
+      this.pageInfo.pageNo = 1;
+      // pageNo || pageSize
+      this.getDataList(1, i, "sizeChg");
+    },
+    // 反选某行的选中状态，仅多选
+    toggleTableSelect(index) {
+      if (this.$refs.gridContent.selectType) {
+        this.$refs.gridContent.toggleSelect(index);
+      } else
+        this.$hMessage.info({
+          content: "仅支持表格多选",
+          duration: 3,
+          closable: true,
+        });
+    },
+    // 表格导出功能
+    exportCsv(params) {
+      /* {
+          filename:  '' // 文件名
+          columns: []// 导出表格列
+          data: [] // 导出表格数据
+          noHeader: false //是否导出表格头
+        } */
+      this.$refs.gridContent.exportCsv(params);
+    },
+    printer(config) {
+      // 具体各项配置参考http://printjs.crabbly.com/
+      let printConfig = config
+        ? config
+        : {
+            printable: [],
+            properties: [],
+            type: "json",
+            gridHeaderStyle: "border: 1px solid #111;",
+            gridStyle: "border: 1px solid #111;text-align:center;",
+          };
+      //printJS(printConfig)
+    },
+    bodyClick(event) {
+      //实现点击页面空白地方使自定义列表项div消失
+      let _this = this;
+      if (
+        !!_this.$refs.listCheckBox &&
+        !!_this.$refs.listCheckBox.contains(event.target)
+      )
+        return;
+      _this.showMultiple = false;
+    },
+    //显示多选框
+    handlemultiple() {
+      this.showMultiple = !this.showMultiple;
+      document.body.addEventListener("click", this.bodyClick, false);
+    },
+    //控制列显示隐藏
+    checkAllGroupChange(newShowDatas) {
+      let len = newShowDatas.length;
+      if (window.LOCAL_CONFIG.isOpenSelfColumns + "" == "true") {
+        let url = "/saveDefineColumns";
+        let query = {
+          userId: this.$route.meta.operatorCode,
+          menuCode: this.$route.meta.id,
+          columnCodes: this.checked.join(","),
+        };
+        let isUrlLowercase = window.LOCAL_CONFIG.isUrlLowercase + "";
+        if (isUrlLowercase == "true") {
+          url = url.toLowerCase();
+        }
+        this.$hCore.fetch.post(url, query).then((res) => {
+          let data = res.data instanceof Array ? res.data : [res.data];
+          if (res && res.data) {
+            let code = data[0].return_code;
+            if (code == 0) {
+              newShowDatas.forEach((item, index, showCol) => {
+                let isSave = index == len - 1 ? true : false;
+                //控制表格列显示隐藏
+                this.columnsArray.forEach((value, index) => {
+                  let key = value.key ? value.key : value.type;
+                  // if(item.key == key){
+                  if (item.omc_field_key == key) {
+                    value.hiddenCol = !value.hiddenCol;
+                    if (this.checked && this.checked.length == 1) {
+                      this.$refs.gridContent.fixedHeader();
+                    }
+                  }
+                });
+                if (isSave + "" == "true") {
+                  this.$hMessage.success({
+                    content: this.$t("m.i.common.checkBoxMsg_1"),
+                    duration: 3,
+                    closable: true,
+                  });
+                }
+              });
+            } else {
+              this.$hMessage.error({
+                content: this.$t("m.i.common.checkBoxMsg_2"),
+                duration: 3,
+                closable: true,
+              });
+            }
+          } else {
+            this.$hMessage.error({
+              content: this.$t("m.i.common.netError"),
+              duration: 3,
+              closable: true,
+            });
+          }
+        });
+      } else {
+        this.columnsArray.forEach((value, index) => {
+          let key = value.key ? value.key : value.type;
+          console.log(3333333, newShowDatas.key, key)
+          if (newShowDatas.key == key) {
+            value.hiddenCol = !value.hiddenCol;
+            if (this.checked && this.checked.length == 1) {
+              this.$refs.gridContent.fixedHeader();
+            }
+          }
+        });
+      }
+    },
+    //计算表格高度
+    calculateHeight() {
+      let appObj = document.getElementsByClassName("app-main");
+      let noticeObj = document.getElementsByClassName("h-notice-bar");
+      let noticeClientHeight =
+        noticeObj.length == 0 ? 0 : noticeObj[0].clientHeight;
+      let appOffsetTop = appObj.length == 0 ? 0 : appObj[0].offsetTop;
+      let hasTabs =
+        typeof window.document.getElementsByClassName("h-tabs-toolbar")[0];
+      let hasPanel =
+        typeof window.document.getElementsByClassName("h-panel")[0];
+      let objects = {
+        panelObj:
+          hasPanel == "undefined"
+            ? "undefined"
+            : window.document.getElementsByClassName("h-panel")[0],
+        tabsObj:
+          hasTabs == "undefined"
+            ? "undefined"
+            : window.document.getElementsByClassName("h-tabs-toolbar")[0],
+        titleObj: this.isShowTitle
+          ? window.document.getElementsByClassName("h-datagrid-title")[0]
+          : "undefined",
+        toolbarObj: this.isShowToolBar
+          ? window.document.getElementsByClassName("h-datagrid-toolbar")[0]
+          : "undefined",
+        pageObj: this.isShowPage
+          ? window.document.getElementsByClassName("h-page")[0]
+          : "undefined",
+      };
+      let extralHeight = 0;
+      Object.keys(objects).forEach(function (key, index) {
+        if (objects[key] != "undefined") {
+          extralHeight += objects[key].clientHeight
+            ? objects[key].clientHeight
+            : 0;
+        }
+      });
+      window.sessionStorage.removeItem("hFormitemLength");
+      let themeDiffHeight = 36;
+      if (document.getElementsByTagName("html")[0].className === "uf3")
+        themeDiffHeight = 20;
+      if (
+        window.LOCAL_CONFIG.FRAME_NAME &&
+        window.LOCAL_CONFIG.FRAME_NAME == "uf3"
+      )
+        themeDiffHeight = 46;
+      return (
+        window.innerHeight -
+        extralHeight -
+        appOffsetTop -
+        noticeClientHeight -
+        themeDiffHeight -
+        12
+      );
+    },
+    //表格自适应
+    selfAdaption() {
+      if (document.getElementById("h-main-search")) {
+        let num = window.sessionStorage.getItem("hFormitemLength")
+          ? window.sessionStorage.getItem("hFormitemLength")
+          : 4;
+        let obj = document.getElementById("h-main-search");
+        let children = obj.getElementsByClassName("h-form-item");
+        let counts = 0;
+        if (children.length % num == 0) {
+          counts = children.length / num;
+        } else {
+          counts = Math.ceil(children.length / num);
+        }
+        let searchHeight = counts * 36 + "px";
+        obj.style.height = searchHeight;
+      }
+      if (this.$refs[this.selfAdaptTable]) {
+        this.selfHeight = this.calculateHeight();
+        this.fixedHeight = this.selfHeight;
+        if (this.selfHeight > 50) {
+          this.$refs[this.selfAdaptTable].style.height =
+            this.selfHeight.toString() + "px";
+        } else {
+          return;
+        }
+        // this.$refs[this.selfAdaptTable].style.height = this.selfHeight.toString()+'px'
+      }
+    },
+    //打开自定义列功能窗口
+    handleListCheckBoxWin() {
+      let url = "/components/HDatagridToColumns";
+      let options = {
+        handshake: this.handshake,
+        maximize: false,
+        fatherShowCol: this.showCol,
+        disableCols: this.disableCols,
+        fatherCheckCol: this.checked,
+        winWidth: 450,
+        fatherColumnsSumbit: this.columnsSumbit,
+      };
+      this.show(url, "", options);
+    },
+    async show(compModal, id, options) {
+      const result = await this.$modal.open(compModal, id, options);
+    },
+    columnsSumbit(newShowDatas, checkCol) {
+      let that = this;
+      this.checked = checkCol;
+      //合并新改变列内容
+      if (newShowDatas && newShowDatas.length > 0) {
+        this.checkAllGroupChange(newShowDatas);
+        // let len = newShowDatas.length
+        // newShowDatas.forEach((value,index,showCol) => {
+        //   let isSave = (index==len - 1) ? true : false
+        //   that.checkAllGroupChange (value, isSave)
+        // })
+      }
+    },
+  },
+  mounted() {
+    if (this.autoLoad) {
+      this.getDataList(1, this.defaultPageSizeNum);
+    } else {
+      if (this.gridData) {
+        this.setGridData();
+      }
+    }
+    if (!this.$slots.toolbar) {
+      this.isShowToolBar = false;
+    }
+    this.$nextTick(() => this.selfAdaption());
+  },
+  created() {
+    if (this.showListCkeckBox) {
+      if (window.LOCAL_CONFIG.isOpenSelfColumns + "" == "true") {
+        this.initColumns = this.$hCore.utils.deepClone(this.columns);
+        let url = "/getDefineColumnsList" + "?time=" + new Date().getTime();
+        if (this.$route) {
+          let query = {
+            userId: this.$route.meta.operatorCode,
+            menuCode: this.$route.meta.id,
+          };
+          let isUrlLowercase = window.LOCAL_CONFIG.isUrlLowercase + "";
+          if (isUrlLowercase == "true") {
+            url = url.toLowerCase();
+          }
+          //从后台请求数据，根据请求回来的数据动态显示表格的列
+          this.$hCore.fetch.post(url, query).then((res) => {
+            let data = res.data instanceof Array ? res.data : [res.data];
+            if (data) {
+              if (data && data.length > 0 && data[0].column_codes) {
+                this.columnsCodes = data[0].column_codes.split(",");
+              }
+              //初始化生成右上角下拉框数据
+              this.initColumns.forEach((value, index, showCol) => {
+                if (value.hiddenCol != true) {
+                  let tempItem = JSON.parse(JSON.stringify(value));
+                  if (tempItem.type == "selection") {
+                    tempItem.title = this.$t("m.i.common.checkBox");
+                    tempItem.key = "selection";
+                  }
+                  this.showCol.push(tempItem);
+                  this.keysCol.push(tempItem.key);
+                  //根据返回来的数据控制右上角下拉框是否勾中
+                  if (this.columnsCodes.length > 0) {
+                    if (this.columnsCodes.indexOf(tempItem.key) > -1) {
+                      this.checked.push(tempItem.key);
+                    }
+                  } else {
+                    this.checked.push(tempItem.key);
+                  }
+                } else {
+                  let tmpItem = JSON.parse(JSON.stringify(value));
+                  this.initHiddenCols.push(tmpItem);
+                }
+              });
+              //储存禁止操作列 this.showCol index == 1 || index == 2
+              if (this.showCol && this.showCol.length > 2) {
+                this.disableCols.push(this.showCol[1].key);
+                this.disableCols.push(this.showCol[2].key);
+              }
+            } else {
+              this.$hMessage.error({
+                content: this.$t("m.i.common.netError"),
+                duration: 3,
+                closable: true,
+              });
+            }
+          });
+        }
+      } else {
+        //初始化生成右上角下拉框数据
+        this.columnsArray.forEach((value, index, showCol) => {
+          if (value.hiddenCol != true) {
+            let tempItem = JSON.parse(JSON.stringify(value));
+            if (tempItem.type == "selection") {
+              tempItem.title = this.$t("m.i.common.checkBox");
+              tempItem.key = "selection";
+            }
+            this.showCol.push(tempItem);
+            this.checked.push(tempItem.key);
+            this.keysCol.push(tempItem.key);
+          } else {
+            let tItem = JSON.parse(JSON.stringify(value));
+            this.initHiddenCols.push(tItem);
+          }
+        });
+        //储存禁止操作列 this.showCol index == 1 || index == 2
+        if (this.showCol && this.showCol.length > 2) {
+          this.disableCols.push(this.showCol[1].key);
+          this.disableCols.push(this.showCol[2].key);
+        }
+      }
+    }
+
+    // 默认一页显示条数，条数可为5、10、15、20、50、100，see上可设置
+    if (this.defaultPageSize + "" == "true") {
+      let ps = window.LOCAL_CONFIG.defaultPageSize;
+      if (ps && ps != "") {
+        this.defaultPageSizeNum = parseInt(ps);
+        //非数字
+        if (isNaN(this.defaultPageSizeNum)) this.defaultPageSizeNum = 10;
+        this.pageInfo.pageSize = this.defaultPageSizeNum;
+      }
+    }
+  },
+  beforeDestroy() {
+    //在组件生命周期结束的时候销毁。
+    document.body.removeEventListener("click", this.bodyClick, false);
+  },
+};
+</script>
